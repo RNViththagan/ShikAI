@@ -65,21 +65,21 @@ const generateChatSummary = async (
     let promptText: string;
 
     if (isFirstMessage) {
-      promptText = `Please generate a very brief, descriptive title (2-6 words) based on what the user is asking about or wants to accomplish. Focus on the main topic or task. Do not include quotes or extra formatting, just the title:
+      promptText = `Please generate a very brief, descriptive title (3-6 words) for this conversation based on what the user is asking about or wants to accomplish. Focus on the main topic, task, or question. Be specific and actionable. Do not include quotes, colons, or extra formatting - just the title words:
 
 ${conversationText}
 
-Title:`;
+Generate a concise title:`;
     } else if (currentTitle) {
-      promptText = `The current conversation title is: "${currentTitle}"
+      promptText = `Current conversation title: "${currentTitle}"
 
-Based on the recent conversation below, please generate a very brief, descriptive title (2-6 words) that captures the main topic or task being discussed. Try to keep it similar to the current title if the topic hasn't changed significantly, but update it if the conversation has evolved to a new focus. Do not include quotes or extra formatting, just the title:
+Based on the recent conversation below, generate an updated brief title (3-6 words) that captures the current focus. If the topic hasn't significantly changed, keep it similar to the current title. If there's a new main focus, update accordingly. No quotes or formatting - just the title words:
 
 ${conversationText}
 
-Title:`;
+Updated title:`;
     } else {
-      promptText = `Please generate a very brief, descriptive title (2-6 words) for this conversation. Focus on the main topic or task being discussed. Do not include quotes or extra formatting, just the title:
+      promptText = `Generate a brief, descriptive title (3-6 words) for this conversation based on the main topics being discussed. Focus on the core subject or task. No quotes or formatting - just the title words:
 
 ${conversationText}
 
@@ -92,14 +92,19 @@ Title:`;
       maxTokens: 50,
     });
 
-    // Clean up the title - remove quotes, extra spaces, and truncate if too long
+    // Clean up the title - remove quotes, extra spaces, and format properly
     const cleanTitle = text
-      .replace(/['"]/g, "")
-      .replace(/^Title:\s*/, "")
+      .replace(/['"]/g, "") // Remove quotes
+      .replace(/^(Title|Updated title|Generate a concise title):\s*/i, "") // Remove prompt prefixes
+      .replace(/[^\w\s\-]/g, "") // Remove special characters except hyphens
       .trim()
-      .substring(0, 50);
+      .split(/\s+/) // Split into words
+      .slice(0, 6) // Take first 6 words max
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()) // Title case
+      .join(" ")
+      .substring(0, 50); // Max 50 characters
 
-    return cleanTitle || "Chat Session";
+    return cleanTitle || "New Chat Session";
   } catch (error) {
     console.error("Error generating chat summary:", error);
     return "Chat Session";
@@ -774,29 +779,47 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       messageCount++;
 
       // Generate title based on first user input for new conversations
-      if (isFirstUserInput && userInput !== "continue") {
+      if (
+        isFirstUserInput &&
+        userInput !== "continue" &&
+        userInput.trim() !== ""
+      ) {
         console.log("\n✨ Let me create a title for our conversation...");
         try {
           currentChatTitle = await generateChatSummary(clientMessages, true);
           console.log(`🎯 Our conversation topic: "${currentChatTitle}"`);
 
           // Update filename with the new title
-          currentFilePath = updateConversationFile(
+          const updatedFilePath = updateConversationFile(
             logDir,
             currentFilePath,
             conversationId,
             currentChatTitle
           );
 
+          // Only update currentFilePath if the file was successfully renamed
+          if (updatedFilePath !== currentFilePath) {
+            currentFilePath = updatedFilePath;
+            console.log(
+              `📄 Conversation saved as: ${path.basename(currentFilePath)}`
+            );
+          }
+
           isFirstUserInput = false;
         } catch (error) {
-          console.error("Oops, couldn't create a title:", error);
+          console.error("⚠️  Couldn't create a title:", error);
+          console.log("💡 Don't worry, I'll continue without a custom title!");
           isFirstUserInput = false;
         }
       }
 
       // Update title every 5 total messages (user + assistant messages)
-      if (messageCount > 0 && messageCount % 5 === 0 && !isFirstUserInput) {
+      if (
+        messageCount > 0 &&
+        messageCount % 5 === 0 &&
+        !isFirstUserInput &&
+        currentChatTitle
+      ) {
         console.log("\n🔄 Updating our conversation title...");
         try {
           const newTitle = await generateChatSummary(
@@ -804,14 +827,33 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
             false,
             currentChatTitle
           );
-          if (newTitle !== currentChatTitle) {
-            console.log(`📝 Title updated to: "${newTitle}"`);
+          if (newTitle !== currentChatTitle && newTitle.trim() !== "") {
+            console.log(
+              `📝 Title updated: "${currentChatTitle}" → "${newTitle}"`
+            );
+
+            // Update filename with the new title
+            const updatedFilePath = updateConversationFile(
+              logDir,
+              currentFilePath,
+              conversationId,
+              newTitle
+            );
+
+            if (updatedFilePath !== currentFilePath) {
+              currentFilePath = updatedFilePath;
+              console.log(
+                `📄 File renamed to: ${path.basename(currentFilePath)}`
+              );
+            }
+
             currentChatTitle = newTitle;
           } else {
             console.log(`✓ Title remains: "${currentChatTitle}"`);
           }
         } catch (error) {
-          console.error("Oops, couldn't update the title:", error);
+          console.error("⚠️  Couldn't update the title:", error);
+          console.log("💡 Continuing with current title...");
         }
       }
 
