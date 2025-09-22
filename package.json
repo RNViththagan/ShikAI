@@ -1,53 +1,66 @@
 {
-  "name": "vercel-ai-sdk-masterclass",
+  "name": "shikai",
   "version": "1.0.0",
-  "description": "A comprehensive collection of AI agent examples using the Vercel AI SDK with multiple AI providers, terminal capabilities, and advanced AI functions.",
-  "main": "index.js",
+  "description": "ShikAI - Intelligent Terminal Assistant with Conversation Management",
+  "main": "dist/core/shikai.js",
+  "bin": {
+    "shikai": "./bin/shikai"
+  },
   "scripts": {
-    "dev": "tsx src/index.ts",
-    "claude-terminal": "tsx src/claude-terminal.ts",
-    "claude-terminal-resume": "tsx src/claude-terminal-resume.ts",
-    "generate-object": "tsx src/generate-object.ts",
-    "search-queries": "tsx src/search-queries.ts",
-    "cache-demo": "tsx src/cache-demo.ts",
-    "vercel-ai-cache-demo": "tsx src/vercel-ai-cache-demo.ts"
+    "build": "tsc",
+    "dev": "tsx src/core/shikai.ts",
+    "start": "node dist/core/shikai.js",
+    "cli": "tsx src/cli/index.ts",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [
     "ai",
-    "vercel-ai-sdk",
-    "anthropic",
+    "assistant",
     "claude",
-    "openai",
-    "gpt",
-    "ai-agents",
-    "typescript",
+    "anthropic",
     "terminal",
-    "search",
-    "tools"
+    "cli",
+    "conversation-management",
+    "ai-tools",
+    "developer-tools",
+    "productivity",
+    "typescript"
   ],
   "author": "RNViththagan",
-  "license": "ISC",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RNViththagan/vercel-ai-sdk-masterclass.git"
+    "url": "https://github.com/RNViththagan/ShikAI.git"
   },
-  "homepage": "https://github.com/RNViththagan/vercel-ai-sdk-masterclass#readme",
+  "homepage": "https://github.com/RNViththagan/ShikAI#readme",
   "bugs": {
-    "url": "https://github.com/RNViththagan/vercel-ai-sdk-masterclass/issues"
+    "url": "https://github.com/RNViththagan/ShikAI/issues"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
-    "@ai-sdk/google": "^1.1.16",
-    "@ai-sdk/openai": "^1.1.13",
-    "@ai-sdk/perplexity": "^1.0.1",
+    "@ai-sdk/google": "^1.2.22",
+    "@ai-sdk/openai": "^1.3.24",
+    "@ai-sdk/perplexity": "^1.1.9",
     "@anthropic-ai/sdk": "^0.30.1",
     "ai": "^4.3.19",
+    "commander": "^12.1.0",
     "exa-js": "^1.4.10",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
     "dotenv": "^16.4.7",
-    "tsx": "^4.19.3"
-  }
+    "tsx": "^4.19.3",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ]
 }

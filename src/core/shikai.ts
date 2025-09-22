@@ -961,4 +961,4 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
   }
 };
 
-main().catch(console.error);
+export { main };
