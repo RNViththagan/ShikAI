@@ -10,7 +10,7 @@ import * as path from "path";
 
 // Global configuration
 const MAX_STEPS = 5;
-const AGENT_NAME = process.env.AGENT_NAME || "Luna";
+const AGENT_NAME = process.env.AGENT_NAME || "ShikAI";
 
 // Interface for conversation metadata
 interface ConversationMetadata {
@@ -962,3 +962,8 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
 };
 
 export { main };
+
+// Start the application if run directly
+if (require.main === module) {
+  main().catch(console.error);
+}
