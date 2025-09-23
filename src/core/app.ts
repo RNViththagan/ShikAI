@@ -1,10 +1,6 @@
 import "dotenv/config";
-import { anthropic } from "@ai-sdk/anthropic";
-import { CoreMessage, streamText, generateText, tool } from "ai";
+import { CoreMessage } from "ai";
 import * as readline from "readline";
-import { z } from "zod";
-import { exec } from "child_process";
-import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -12,6 +8,7 @@ import {
   getMaxSteps,
   getTitleUpdateInterval,
 } from "../config/app-config";
+import { AIService, ToolsService } from "../services";
 
 // Get configuration values
 const MAX_STEPS = getMaxSteps();
@@ -26,95 +23,6 @@ interface ConversationMetadata {
   fileName?: string;
   lastModified?: Date;
 }
-
-// Function to generate chat summary for title
-const generateChatSummary = async (
-  messages: CoreMessage[],
-  isFirstMessage: boolean = false,
-  currentTitle: string = ""
-): Promise<string> => {
-  try {
-    // Get recent user messages for context (last 10 messages or so)
-    const recentMessages = messages
-      .filter((msg) => msg.role === "user" || msg.role === "assistant")
-      .slice(-10);
-
-    if (recentMessages.length === 0) {
-      return "New Chat";
-    }
-
-    // Create a summarization prompt
-    const conversationText = recentMessages
-      .map((msg) => {
-        if (msg.role === "user") {
-          return `User: ${msg.content}`;
-        } else if (msg.role === "assistant") {
-          // Handle different content formats
-          let content = "";
-          if (Array.isArray(msg.content)) {
-            content = msg.content
-              .map((part: any) =>
-                part.type === "text" ? part.text : `[${part.type}]`
-              )
-              .join("");
-          } else {
-            content = msg.content as string;
-          }
-          return `Assistant: ${content}`;
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
-
-    let promptText: string;
-
-    if (isFirstMessage) {
-      promptText = `Please generate a very brief, descriptive title (3-6 words) for this conversation based on what the user is asking about or wants to accomplish. Focus on the main topic, task, or question. Be specific and actionable. Do not include quotes, colons, or extra formatting - just the title words:
-
-${conversationText}
-
-Generate a concise title:`;
-    } else if (currentTitle) {
-      promptText = `Current conversation title: "${currentTitle}"
-
-Based on the recent conversation below, generate an updated brief title (3-6 words) that captures the current focus. If the topic hasn't significantly changed, keep it similar to the current title. If there's a new main focus, update accordingly. No quotes or formatting - just the title words:
-
-${conversationText}
-
-Updated title:`;
-    } else {
-      promptText = `Generate a brief, descriptive title (3-6 words) for this conversation based on the main topics being discussed. Focus on the core subject or task. No quotes or formatting - just the title words:
-
-${conversationText}
-
-Title:`;
-    }
-
-    const { text } = await generateText({
-      model: anthropic("claude-4-sonnet-20250514"),
-      prompt: promptText,
-      maxTokens: 50,
-    });
-
-    // Clean up the title - remove quotes, extra spaces, and format properly
-    const cleanTitle = text
-      .replace(/['"]/g, "") // Remove quotes
-      .replace(/^(Title|Updated title|Generate a concise title):\s*/i, "") // Remove prompt prefixes
-      .replace(/[^\w\s\-]/g, "") // Remove special characters except hyphens
-      .trim()
-      .split(/\s+/) // Split into words
-      .slice(0, 6) // Take first 6 words max
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()) // Title case
-      .join(" ")
-      .substring(0, 50); // Max 50 characters
-
-    return cleanTitle || "New Chat Session";
-  } catch (error) {
-    console.error("Error generating chat summary:", error);
-    return "Chat Session";
-  }
-};
 
 // Function to generate filename with chat title
 const getConversationFileName = (
@@ -228,9 +136,12 @@ const fixMalformedFilename = (
 };
 const main = async () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const execAsync = promisify(exec);
   const logDir = "conversation-logs";
   const titleInterval = getTitleUpdateInterval();
+
+  // Initialize services
+  const aiService = new AIService();
+  const toolsService = new ToolsService();
 
   // Ensure logs directory exists
   if (!fs.existsSync(logDir)) {
@@ -384,96 +295,8 @@ const main = async () => {
     });
   };
 
-  // Permission tool for human-in-the-loop approval
-  const askPermission = tool({
-    description:
-      "Ask the user for explicit permission before executing major/potentially risky commands. Use this for any operation that could delete files, install software, change system settings, etc.",
-    parameters: z.object({
-      action: z
-        .string()
-        .describe("Description of the action you want to perform"),
-      command: z
-        .string()
-        .describe("The specific command(s) you want to execute"),
-      risks: z.string().describe("Potential risks or impacts of this action"),
-      reason: z.string().describe("Why this action is needed to help the user"),
-    }),
-    execute: async ({ action, command, risks, reason }) => {
-      console.log(`\n🤔 ${AGENT_NAME}: I'd like to ${action}`);
-      console.log(`📋 Command: ${command}`);
-      console.log(`⚠️  Potential risks: ${risks}`);
-      console.log(`💡 Why I need this: ${reason}`);
-      console.log(`\n🔄 May I proceed? (y/n):`);
-
-      return new Promise((resolve) => {
-        // Use the main readline interface instead of creating a new one
-        rl.question("Your choice: ", (answer) => {
-          const approved =
-            answer.toLowerCase().trim() === "y" ||
-            answer.toLowerCase().trim() === "yes";
-
-          if (approved) {
-            console.log(
-              `✅ ${AGENT_NAME}: Thank you! I'll proceed with the action.`
-            );
-            resolve({
-              approved: true,
-              message: "User granted permission to proceed",
-            });
-          } else {
-            console.log(
-              `❌ ${AGENT_NAME}: Understood! I won't execute that command. What would you like to do instead?`
-            );
-            resolve({
-              approved: false,
-              message: "User denied permission. Action cancelled.",
-            });
-          }
-        });
-      });
-    },
-  });
-
-  // Terminal execution tool
-  const executeCommand = tool({
-    description:
-      "Execute terminal commands as if opening a terminal and running them directly. Use this for any command-line operations.",
-    parameters: z.object({
-      command: z.string().describe("The terminal command to execute"),
-    }),
-    execute: async ({ command }) => {
-      try {
-        console.log(`\n$ ${command}`);
-
-        const { stdout, stderr } = await execAsync(command, {
-          timeout: 60000,
-          maxBuffer: 5 * 1024 * 1024,
-          cwd: process.cwd(),
-        });
-
-        return {
-          success: true,
-          output: stdout || stderr || "Command completed",
-          exitCode: 0,
-        };
-      } catch (error: any) {
-        console.error(`Command failed with exit code ${error.code || 1}`);
-        if (error.stdout) {
-          console.log(error.stdout);
-        }
-        if (error.stderr) {
-          console.error(error.stderr);
-        }
-
-        return {
-          success: false,
-          output: error.stdout || error.stderr || error.message,
-          exitCode: error.code || 1,
-          error: error.message,
-        };
-      }
-    },
-  });
+  // Get tools from service
+  const tools = toolsService.getAllTools(rl);
 
   const askQuestion = (): Promise<string> => {
     return new Promise((resolve) => {
@@ -549,7 +372,7 @@ const main = async () => {
         "\n🎯 This conversation doesn't have a title yet. Let me create one..."
       );
       try {
-        currentChatTitle = await generateChatSummary(clientMessages);
+        currentChatTitle = await aiService.generateChatSummary(clientMessages);
         console.log(`✨ Generated title: "${currentChatTitle}"`);
 
         // Update the filename with the new title
@@ -792,7 +615,10 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       ) {
         console.log("\n✨ Let me create a title for our conversation...");
         try {
-          currentChatTitle = await generateChatSummary(clientMessages, true);
+          currentChatTitle = await aiService.generateChatSummary(
+            clientMessages,
+            true
+          );
           console.log(`🎯 Our conversation topic: "${currentChatTitle}"`);
 
           // Update filename with the new title
@@ -828,7 +654,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       ) {
         console.log("\n🔄 Updating our conversation title...");
         try {
-          const newTitle = await generateChatSummary(
+          const newTitle = await aiService.generateChatSummary(
             clientMessages,
             false,
             currentChatTitle
@@ -872,15 +698,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
         providerMetadata,
         response,
         steps,
-      } = await streamText({
-        model: anthropic("claude-4-sonnet-20250514"),
-        messages: clientMessages,
-        tools: {
-          askPermission,
-          executeCommand,
-        },
-        maxSteps: MAX_STEPS,
-      });
+      } = await aiService.streamText(clientMessages, tools, MAX_STEPS);
 
       for await (const part of fullStream) {
         process.stdout.write(part.type === "text-delta" ? part.textDelta : "");
@@ -895,7 +713,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
 
       // Count assistant messages added (typically 1, but could be more with tool calls)
       const assistantMessagesAdded = finalMessages.filter(
-        (msg) => msg.role === "assistant"
+        (msg: any) => msg.role === "assistant"
       ).length;
       messageCount += assistantMessagesAdded;
 
@@ -910,7 +728,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
           "\n🔄 Updating our conversation title after recent exchanges..."
         );
         try {
-          const newTitle = await generateChatSummary(
+          const newTitle = await aiService.generateChatSummary(
             clientMessages,
             false,
             currentChatTitle
