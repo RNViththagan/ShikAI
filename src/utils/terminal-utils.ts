@@ -161,3 +161,74 @@ export function displayConversationContext(
 
   console.log("\nType 'exit' to quit\n");
 }
+
+/**
+ * Handle max steps continuation workflow
+ * Returns true if should continue, false if should stop
+ */
+export async function handleMaxStepsContinuation(
+  rl: any,
+  maxSteps: number
+): Promise<{ shouldContinue: boolean; skipNextQuestion: boolean }> {
+  // Show the prompt on the same line
+  process.stdout.write(
+    `\n⚠️  Reached maximum steps (${maxSteps}). Continue? (y/n): `
+  );
+
+  try {
+    const continueAnswer = await askContinueQuestion(rl);
+
+    // Clear the line and move cursor back to overwrite the prompt
+    process.stdout.write("\r\x1b[K"); // \r moves to start of line, \x1b[K clears to end of line
+
+    if (
+      continueAnswer.toLowerCase() === "y" ||
+      continueAnswer.toLowerCase() === "yes"
+    ) {
+      console.log(`⚠️  Reached maximum steps (${maxSteps}). Continuing...`);
+      return { shouldContinue: true, skipNextQuestion: true };
+    } else {
+      console.log(`⚠️  Reached maximum steps (${maxSteps}). Stopped by user.`);
+      return { shouldContinue: false, skipNextQuestion: false };
+    }
+  } catch (error) {
+    console.error("\n❌ Error getting user input:", error);
+    console.log("\n⏹️  Stopping due to input error.");
+    return { shouldContinue: false, skipNextQuestion: false };
+  }
+}
+
+/**
+ * Handle special commands like save, history, etc.
+ * Returns true if command was handled and should continue to next iteration
+ */
+export function handleSpecialCommands(
+  userInput: string,
+  currentFilePath: string,
+  clientMessages: any[],
+  conversationId: string,
+  isResumedConversation: boolean,
+  currentChatTitle?: string
+): boolean {
+  const command = userInput.toLowerCase();
+
+  if (command === "save") {
+    const fs = require("fs");
+    const path = require("path");
+    fs.writeFileSync(currentFilePath, JSON.stringify(clientMessages, null, 2));
+    console.log(`💾 Conversation saved to ${path.basename(currentFilePath)}`);
+    return true; // Command handled, continue to next iteration
+  }
+
+  if (command === "history") {
+    console.log(`📊 Current conversation: ${clientMessages.length} messages`);
+    console.log(`🆔 Conversation ID: ${conversationId}`);
+    console.log(`🔄 Resumed: ${isResumedConversation ? "Yes" : "No"}`);
+    if (currentChatTitle) {
+      console.log(`💭 Current title: "${currentChatTitle}"`);
+    }
+    return true; // Command handled, continue to next iteration
+  }
+
+  return false; // No special command handled, proceed normally
+}

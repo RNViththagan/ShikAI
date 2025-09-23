@@ -7,7 +7,9 @@ import {
   getAgentName,
   getMaxSteps,
   getTitleUpdateInterval,
+  getPromptTemplate,
 } from "../config/app-config";
+import { getPromptTemplate as getPromptTemplateContent } from "../config/prompts";
 import { AIService, ToolsService } from "../services";
 import {
   getConversationFileName,
@@ -20,15 +22,22 @@ import {
   loadConversation,
   saveConversation,
   ConversationMetadata,
+  generateInitialTitle,
+  updateConversationTitle,
+  shouldUpdateTitle,
+  appendFinalMessages,
   askQuestion,
   askContinueQuestion,
   selectConversation,
   displayConversationContext,
+  handleMaxStepsContinuation,
+  handleSpecialCommands,
 } from "../utils";
 
 // Get configuration values
 const MAX_STEPS = getMaxSteps();
 const AGENT_NAME = getAgentName();
+const PROMPT_TEMPLATE_NAME = getPromptTemplate();
 
 const main = async () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -155,52 +164,7 @@ const main = async () => {
     currentFilePath = getConversationFileName(logDir, conversationId, "");
     clientMessages.push({
       role: "system",
-      content: `Hi! I'm ${AGENT_NAME}, your friendly personal assistant with full computer access! 😊
-
-WHO I AM:
-- Your dedicated personal assistant who's always here to help
-- I'm friendly, patient, and genuinely care about making your life easier
-- I have full access to your computer's terminal and can help with any task
-- Think of me as your tech-savvy friend who never gets tired of helping!
-
-WHAT I CAN DO FOR YOU:
-- 💻 Handle any computer tasks - coding, file management, system operations
-- 🛠️ Solve problems step-by-step, explaining everything clearly
-- 📝 Write, edit, and organize your files and projects
-- 🔍 Research, analyze data, and find information
-- ⚡ Automate repetitive tasks to save you time
-- 🎯 Help you learn new skills while we work together
-
-MY APPROACH:
-- I'll always ask clarifying questions if I'm unsure about what you need
-- I explain things in simple terms, but can go technical if you want
-- I'm proactive - I'll suggest improvements and alternatives
-- I remember our conversations and build on what we've discussed
-- I'll warn you about risky operations and suggest safer approaches
-- I celebrate your successes and help you learn from challenges
-
-🚨 PERMISSION REQUIREMENTS - VERY IMPORTANT:
-- ALWAYS use the askPermission tool before executing major commands that could:
-  • Delete, move, or modify important files/directories
-  • Install or uninstall software (apt, npm, pip, etc.)
-  • Change system settings or configurations
-  • Execute commands with sudo/admin privileges
-  • Make network requests or downloads
-  • Modify Git repositories (commits, pushes, merges, etc.)
-  • Run potentially destructive or irreversible operations
-  • Write to system directories or configuration files
-- For simple/safe commands (ls, pwd, cat, echo, grep, find, etc.), proceed normally
-- When in doubt, always ask first - it's better to be safe!
-- Explain clearly what you want to do and why it's needed
-
-PERSONALITY:
-- Warm, friendly, and encouraging
-- Patient and understanding - no question is too basic
-- Enthusiastic about helping you achieve your goals
-- Honest when I don't know something
-- Supportive and positive, even when things get tricky
-
-I'm here to make your computing experience smoother and more enjoyable. Whether you need help with a simple task or a complex project, just let me know what you'd like to accomplish! ✨`,
+      content: getPromptTemplateContent(PROMPT_TEMPLATE_NAME, AGENT_NAME),
       providerOptions: {
         anthropic: { cacheControl: { type: "ephemeral" } },
       },
@@ -212,54 +176,6 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
   }
 
   const knownIds = new Set<string>();
-  const appendFinalMessages = (
-    history: Array<CoreMessage>,
-    finalMessages: Array<CoreMessage>,
-    cache: boolean
-  ) => {
-    // First, remove cache control from previous assistant messages (except system message)
-    if (cache) {
-      history.forEach((msg) => {
-        if (
-          msg.role === "assistant" &&
-          msg.providerOptions?.anthropic?.cacheControl
-        ) {
-          delete msg.providerOptions.anthropic.cacheControl;
-          // Clean up empty providerOptions
-          if (Object.keys(msg.providerOptions.anthropic).length === 0) {
-            delete msg.providerOptions.anthropic;
-          }
-          if (Object.keys(msg.providerOptions).length === 0) {
-            delete msg.providerOptions;
-          }
-        }
-      });
-    }
-
-    // Then add new messages
-    for (let i = 0; i < finalMessages.length; i++) {
-      const m = finalMessages[i];
-
-      if ((m.role === "assistant" || m.role === "tool") && (m as any).id) {
-        if (!knownIds.has((m as any).id)) {
-          knownIds.add((m as any).id);
-
-          // Only add cache control to the final assistant message
-          if (
-            cache &&
-            i === finalMessages.length - 1 &&
-            m.role === "assistant"
-          ) {
-            m.providerOptions = {
-              anthropic: { cacheControl: { type: "ephemeral" } },
-            };
-          }
-
-          history.push(m as CoreMessage);
-        }
-      }
-    }
-  };
 
   let userInput: string;
   let skipNextQuestion = false;
@@ -285,27 +201,17 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       }
 
       // Handle special commands
-      if (userInput.toLowerCase() === "save") {
-        fs.writeFileSync(
+      if (
+        handleSpecialCommands(
+          userInput,
           currentFilePath,
-          JSON.stringify(clientMessages, null, 2)
-        );
-        console.log(
-          `💾 Conversation saved to ${path.basename(currentFilePath)}`
-        );
-        continue;
-      }
-
-      if (userInput.toLowerCase() === "history") {
-        console.log(
-          `📊 Current conversation: ${clientMessages.length} messages`
-        );
-        console.log(`🆔 Conversation ID: ${conversationId}`);
-        console.log(`🔄 Resumed: ${isResumedConversation ? "Yes" : "No"}`);
-        if (currentChatTitle) {
-          console.log(`💭 Current title: "${currentChatTitle}"`);
-        }
-        continue;
+          clientMessages,
+          conversationId,
+          isResumedConversation,
+          currentChatTitle
+        )
+      ) {
+        continue; // Command was handled, skip to next iteration
       }
 
       // Add user message to conversation
@@ -313,85 +219,41 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       messageCount++;
 
       // Generate title based on first user input for new conversations
-      if (
-        isFirstUserInput &&
-        userInput !== "continue" &&
-        userInput.trim() !== ""
-      ) {
-        console.log("\n✨ Let me create a title for our conversation...");
-        try {
-          currentChatTitle = await aiService.generateChatSummary(
-            clientMessages,
-            true
-          );
-          console.log(`🎯 Our conversation topic: "${currentChatTitle}"`);
+      if (isFirstUserInput) {
+        const titleResult = await generateInitialTitle(
+          aiService,
+          clientMessages,
+          userInput,
+          logDir,
+          currentFilePath,
+          conversationId
+        );
 
-          // Update filename with the new title
-          const updatedFilePath = updateConversationFile(
-            logDir,
-            currentFilePath,
-            conversationId,
-            currentChatTitle
-          );
-
-          // Only update currentFilePath if the file was successfully renamed
-          if (updatedFilePath !== currentFilePath) {
-            currentFilePath = updatedFilePath;
-            console.log(
-              `📄 Conversation saved as: ${path.basename(currentFilePath)}`
-            );
-          }
-
-          isFirstUserInput = false;
-        } catch (error) {
-          console.error("⚠️  Couldn't create a title:", error);
-          console.log("💡 Don't worry, I'll continue without a custom title!");
-          isFirstUserInput = false;
-        }
+        currentChatTitle = titleResult.title;
+        currentFilePath = titleResult.updatedFilePath;
+        isFirstUserInput = false;
       }
 
       // Update title every N total messages (user + assistant messages)
       if (
-        messageCount > 0 &&
-        messageCount % titleInterval === 0 &&
-        !isFirstUserInput &&
-        currentChatTitle
+        shouldUpdateTitle(
+          messageCount,
+          titleInterval,
+          isFirstUserInput,
+          currentChatTitle
+        )
       ) {
-        console.log("\n🔄 Updating our conversation title...");
-        try {
-          const newTitle = await aiService.generateChatSummary(
-            clientMessages,
-            false,
-            currentChatTitle
-          );
-          if (newTitle !== currentChatTitle && newTitle.trim() !== "") {
-            console.log(
-              `📝 Title updated: "${currentChatTitle}" → "${newTitle}"`
-            );
+        const titleResult = await updateConversationTitle(
+          aiService,
+          clientMessages,
+          currentChatTitle,
+          logDir,
+          currentFilePath,
+          conversationId
+        );
 
-            // Update filename with the new title
-            const updatedFilePath = updateConversationFile(
-              logDir,
-              currentFilePath,
-              conversationId,
-              newTitle
-            );
-
-            if (updatedFilePath !== currentFilePath) {
-              currentFilePath = updatedFilePath;
-              console.log(
-                `📄 File renamed to: ${path.basename(currentFilePath)}`
-              );
-            }
-
-            currentChatTitle = newTitle;
-          } else {
-            console.log(`✓ Title remains: "${currentChatTitle}"`);
-          }
-        } catch (error) {
-          console.error("⚠️  Couldn't update the title:", error);
-          console.log("💡 Continuing with current title...");
-        }
+        currentChatTitle = titleResult.title;
+        currentFilePath = titleResult.updatedFilePath;
       }
 
       console.log(`\n${AGENT_NAME}: `);
@@ -414,7 +276,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       const tokenDetails = await providerMetadata;
 
       const cache = true;
-      appendFinalMessages(clientMessages, finalMessages, cache);
+      appendFinalMessages(clientMessages, finalMessages, knownIds, cache);
 
       // Count assistant messages added (typically 1, but could be more with tool calls)
       const assistantMessagesAdded = finalMessages.filter(
@@ -424,37 +286,24 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
 
       // Check if we should update title after assistant response
       if (
-        messageCount > 0 &&
-        messageCount % titleInterval === 0 &&
-        !isFirstUserInput &&
-        currentChatTitle
+        shouldUpdateTitle(
+          messageCount,
+          titleInterval,
+          isFirstUserInput,
+          currentChatTitle
+        )
       ) {
-        console.log(
-          "\n🔄 Updating our conversation title after recent exchanges..."
+        const titleResult = await updateConversationTitle(
+          aiService,
+          clientMessages,
+          currentChatTitle,
+          logDir,
+          currentFilePath,
+          conversationId
         );
-        try {
-          const newTitle = await aiService.generateChatSummary(
-            clientMessages,
-            false,
-            currentChatTitle
-          );
-          if (newTitle !== currentChatTitle) {
-            console.log(`📝 Title updated to: "${newTitle}"`);
 
-            // Update filename with the new title
-            currentFilePath = updateConversationFile(
-              logDir,
-              currentFilePath,
-              conversationId,
-              newTitle
-            );
-            currentChatTitle = newTitle;
-          } else {
-            console.log(`✓ Title remains: "${currentChatTitle}"`);
-          }
-        } catch (error) {
-          console.error("Oops, couldn't update the title:", error);
-        }
+        currentChatTitle = titleResult.title;
+        currentFilePath = titleResult.updatedFilePath;
       }
 
       // Auto-save conversation after each exchange
@@ -468,37 +317,16 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       const hasMaxSteps = stepResults && stepResults.length >= MAX_STEPS;
 
       if (hasMaxSteps) {
-        // Show the prompt on the same line
-        process.stdout.write(
-          `\n⚠️  Reached maximum steps (${MAX_STEPS}). Continue? (y/n): `
+        const continuationResult = await handleMaxStepsContinuation(
+          rl,
+          MAX_STEPS
         );
 
-        try {
-          const continueAnswer = await askContinueQuestion(rl);
-
-          // Clear the line and move cursor back to overwrite the prompt
-          process.stdout.write("\r\x1b[K"); // \r moves to start of line, \x1b[K clears to end of line
-
-          if (
-            continueAnswer.toLowerCase() === "y" ||
-            continueAnswer.toLowerCase() === "yes"
-          ) {
-            console.log(
-              `⚠️  Reached maximum steps (${MAX_STEPS}). Continuing...`
-            );
-            // Set flag to skip asking question in next iteration
-            skipNextQuestion = true;
-            continue;
-          } else {
-            console.log(
-              `⚠️  Reached maximum steps (${MAX_STEPS}). Stopped by user.`
-            );
-            break; // Exit the while loop when user chooses to stop
-          }
-        } catch (error) {
-          console.error("\n❌ Error getting user input:", error);
-          console.log("\n⏹️  Stopping due to input error.");
-          break;
+        if (continuationResult.shouldContinue) {
+          skipNextQuestion = continuationResult.skipNextQuestion;
+          continue;
+        } else {
+          break; // Exit the while loop when user chooses to stop
         }
       }
 
@@ -519,16 +347,6 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
     console.log(
       `💾 Final conversation saved to ${path.basename(currentFilePath)}`
     );
-
-    // Clean up created files
-    try {
-      if (fs.existsSync("x1.txt")) {
-        fs.unlinkSync("x1.txt");
-        console.log("Cleaned up x1.txt file");
-      }
-    } catch (error) {
-      console.error("Error cleaning up files:", error);
-    }
   }
 };
 

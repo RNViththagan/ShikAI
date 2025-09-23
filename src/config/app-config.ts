@@ -73,3 +73,10 @@ export function getMaxSteps(): number {
 export function getTitleUpdateInterval(): number {
   return getConfig().conversation.titleUpdateInterval;
 }
+
+/**
+ * Get the prompt template name from environment or use default
+ */
+export function getPromptTemplate(): string {
+  return "default";
+}

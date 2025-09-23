@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { CoreMessage } from "ai";
-import { extractTitleFromFileName } from "./file-utils";
+import { extractTitleFromFileName, updateConversationFile } from "./file-utils";
 
 /**
  * Conversation management utilities
@@ -125,5 +125,163 @@ export function saveConversation(
     fs.writeFileSync(filePath, JSON.stringify(messages, null, 2));
   } catch (error) {
     console.error("Error saving conversation:", error);
+  }
+}
+
+/**
+ * Generate and apply initial title for new conversations
+ */
+export async function generateInitialTitle(
+  aiService: any,
+  clientMessages: CoreMessage[],
+  userInput: string,
+  logDir: string,
+  currentFilePath: string,
+  conversationId: string
+): Promise<{ title: string; updatedFilePath: string }> {
+  if (userInput === "continue" || userInput.trim() === "") {
+    return { title: "", updatedFilePath: currentFilePath };
+  }
+
+  console.log("\n✨ Let me create a title for our conversation...");
+  try {
+    const currentChatTitle = await aiService.generateChatSummary(
+      clientMessages,
+      true
+    );
+    console.log(`🎯 Our conversation topic: "${currentChatTitle}"`);
+
+    // Update filename with the new title
+    const updatedFilePath = updateConversationFile(
+      logDir,
+      currentFilePath,
+      conversationId,
+      currentChatTitle
+    );
+
+    // Only log if the file was successfully renamed
+    if (updatedFilePath !== currentFilePath) {
+      console.log(
+        `📄 Conversation saved as: ${path.basename(updatedFilePath)}`
+      );
+    }
+
+    return { title: currentChatTitle, updatedFilePath };
+  } catch (error) {
+    console.error("⚠️  Couldn't create a title:", error);
+    console.log("💡 Don't worry, I'll continue without a custom title!");
+    return { title: "", updatedFilePath: currentFilePath };
+  }
+}
+
+/**
+ * Update conversation title periodically
+ */
+export async function updateConversationTitle(
+  aiService: any,
+  clientMessages: CoreMessage[],
+  currentTitle: string,
+  logDir: string,
+  currentFilePath: string,
+  conversationId: string
+): Promise<{ title: string; updatedFilePath: string }> {
+  console.log("\n🔄 Updating our conversation title...");
+  try {
+    const newTitle = await aiService.generateChatSummary(
+      clientMessages,
+      false,
+      currentTitle
+    );
+
+    if (newTitle !== currentTitle && newTitle.trim() !== "") {
+      console.log(`📝 Title updated: "${currentTitle}" → "${newTitle}"`);
+
+      // Update filename with the new title
+      const updatedFilePath = updateConversationFile(
+        logDir,
+        currentFilePath,
+        conversationId,
+        newTitle
+      );
+
+      if (updatedFilePath !== currentFilePath) {
+        console.log(`📄 File renamed to: ${path.basename(updatedFilePath)}`);
+      }
+
+      return { title: newTitle, updatedFilePath };
+    } else {
+      console.log(`✓ Title remains: "${currentTitle}"`);
+      return { title: currentTitle, updatedFilePath: currentFilePath };
+    }
+  } catch (error) {
+    console.error("⚠️  Couldn't update the title:", error);
+    console.log("💡 Continuing with current title...");
+    return { title: currentTitle, updatedFilePath: currentFilePath };
+  }
+}
+
+/**
+ * Check if title should be updated based on message count and interval
+ */
+export function shouldUpdateTitle(
+  messageCount: number,
+  titleInterval: number,
+  isFirstUserInput: boolean,
+  currentChatTitle: string
+): boolean {
+  return (
+    messageCount > 0 &&
+    messageCount % titleInterval === 0 &&
+    !isFirstUserInput &&
+    !!currentChatTitle
+  );
+}
+
+/**
+ * Append final messages to conversation history with cache control management
+ */
+export function appendFinalMessages(
+  history: any[],
+  finalMessages: any[],
+  knownIds: Set<string>,
+  cache: boolean = true
+): void {
+  // First, remove cache control from previous assistant messages (except system message)
+  if (cache) {
+    history.forEach((msg) => {
+      if (
+        msg.role === "assistant" &&
+        msg.providerOptions?.anthropic?.cacheControl
+      ) {
+        delete msg.providerOptions.anthropic.cacheControl;
+        // Clean up empty providerOptions
+        if (Object.keys(msg.providerOptions.anthropic).length === 0) {
+          delete msg.providerOptions.anthropic;
+        }
+        if (Object.keys(msg.providerOptions).length === 0) {
+          delete msg.providerOptions;
+        }
+      }
+    });
+  }
+
+  // Then add new messages
+  for (let i = 0; i < finalMessages.length; i++) {
+    const m = finalMessages[i];
+
+    if ((m.role === "assistant" || m.role === "tool") && m.id) {
+      if (!knownIds.has(m.id)) {
+        knownIds.add(m.id);
+
+        // Only add cache control to the final assistant message
+        if (cache && i === finalMessages.length - 1 && m.role === "assistant") {
+          m.providerOptions = {
+            anthropic: { cacheControl: { type: "ephemeral" } },
+          };
+        }
+
+        history.push(m);
+      }
+    }
   }
 }
