@@ -9,131 +9,27 @@ import {
   getTitleUpdateInterval,
 } from "../config/app-config";
 import { AIService, ToolsService } from "../services";
+import {
+  getConversationFileName,
+  extractTitleFromFileName,
+  ensureProperConversationId,
+  updateConversationFile,
+  fixMalformedFilename,
+  ensureDirectoryExists,
+  listConversations,
+  loadConversation,
+  saveConversation,
+  ConversationMetadata,
+  askQuestion,
+  askContinueQuestion,
+  selectConversation,
+  displayConversationContext,
+} from "../utils";
 
 // Get configuration values
 const MAX_STEPS = getMaxSteps();
 const AGENT_NAME = getAgentName();
 
-// Interface for conversation metadata
-interface ConversationMetadata {
-  id: string;
-  timestamp: string;
-  lastMessage: string;
-  messageCount: number;
-  fileName?: string;
-  lastModified?: Date;
-}
-
-// Function to generate filename with chat title
-const getConversationFileName = (
-  logDir: string,
-  conversationId: string,
-  chatTitle: string
-): string => {
-  if (chatTitle && chatTitle !== "") {
-    // Clean the title for filesystem compatibility
-    const cleanTitle = chatTitle
-      .replace(/[^a-zA-Z0-9\s\-_]/g, "")
-      .replace(/\s+/g, "_")
-      .toLowerCase();
-    return `${logDir}/conversation-${conversationId}-${cleanTitle}.json`;
-  }
-  return `${logDir}/conversation-${conversationId}.json`;
-};
-
-// Function to extract chat title from filename
-const extractTitleFromFileName = (fileName: string): string | null => {
-  // Match pattern: conversation-timestamp-title.json where timestamp is YYYY-MM-DDTHH-mm-ss-sssZ
-  const match = fileName.match(
-    /^conversation-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-(.+)\.json$/
-  );
-  if (match && match[2]) {
-    // Convert underscores back to spaces and title case
-    return match[2]
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-  }
-  return null;
-};
-
-// Function to validate and ensure conversation ID is in proper timestamp format
-const ensureProperConversationId = (
-  id: string,
-  fallbackTimestamp: string
-): string => {
-  // Check if it's already in proper timestamp format: YYYY-MM-DDTHH-mm-ss-sssZ
-  const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
-
-  if (timestampPattern.test(id)) {
-    return id;
-  }
-
-  // If it's not in proper format, use the fallback timestamp
-  console.log(
-    `⚠️  Conversation ID "${id}" is not in proper timestamp format, using fallback.`
-  );
-  return fallbackTimestamp;
-};
-
-// Function to update filename when title changes
-const updateConversationFile = (
-  logDir: string,
-  oldFilePath: string,
-  conversationId: string,
-  newTitle: string
-): string => {
-  try {
-    const newFilePath = getConversationFileName(
-      logDir,
-      conversationId,
-      newTitle
-    );
-
-    if (oldFilePath !== newFilePath && fs.existsSync(oldFilePath)) {
-      // Check if new file already exists to avoid overwriting
-      if (!fs.existsSync(newFilePath)) {
-        fs.renameSync(oldFilePath, newFilePath);
-        console.log(`📝 Updated filename to reflect current topic`);
-        return newFilePath;
-      }
-    }
-  } catch (error) {
-    console.error("Could not update filename:", error);
-  }
-  return oldFilePath;
-};
-
-// Function to fix malformed conversation filenames
-const fixMalformedFilename = (
-  logDir: string,
-  malformedFileName: string,
-  properConversationId: string,
-  title: string = ""
-): string => {
-  try {
-    const oldFilePath = path.join(logDir, malformedFileName);
-    const newFilePath = getConversationFileName(
-      logDir,
-      properConversationId,
-      title
-    );
-
-    if (oldFilePath !== newFilePath && fs.existsSync(oldFilePath)) {
-      if (!fs.existsSync(newFilePath)) {
-        fs.renameSync(oldFilePath, newFilePath);
-        console.log(
-          `🔧 Fixed malformed filename: ${malformedFileName} → ${path.basename(
-            newFilePath
-          )}`
-        );
-        return newFilePath;
-      }
-    }
-  } catch (error) {
-    console.error("Could not fix malformed filename:", error);
-  }
-  return path.join(logDir, malformedFileName);
-};
 const main = async () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const logDir = "conversation-logs";
@@ -144,9 +40,7 @@ const main = async () => {
   const toolsService = new ToolsService();
 
   // Ensure logs directory exists
-  if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
-  }
+  ensureDirectoryExists(logDir);
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -161,166 +55,8 @@ const main = async () => {
   let isFirstUserInput = true; // Track if this is the very first user input
   let currentFilePath = ""; // Track current file path for title updates
 
-  // Function to list available conversations
-  const listConversations = (): ConversationMetadata[] => {
-    const files = fs
-      .readdirSync(logDir)
-      .filter(
-        (file) => file.startsWith("conversation-") && file.endsWith(".json")
-      )
-      .map((file) => {
-        const filePath = path.join(logDir, file);
-        const stats = fs.statSync(filePath);
-        return {
-          fileName: file,
-          lastModified: stats.mtime,
-        };
-      })
-      .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime()) // Sort by last modified time (newest first)
-      .map((fileInfo) => fileInfo.fileName);
-
-    return files
-      .slice(0, 10)
-      .map((file, index) => {
-        try {
-          const filePath = path.join(logDir, file);
-          const stats = fs.statSync(filePath);
-          const content = JSON.parse(fs.readFileSync(filePath, "utf8"));
-          const lastUserMessage = [...content]
-            .reverse()
-            .find((msg: any) => msg.role === "user");
-
-          // Try to extract title from filename first, fallback to last message
-          const titleFromFileName = extractTitleFromFileName(file);
-          const displayMessage = titleFromFileName
-            ? titleFromFileName
-            : lastUserMessage?.content?.substring(0, 60) || "No messages";
-
-          return {
-            id: (index + 1).toString(),
-            timestamp: file
-              .replace("conversation-", "")
-              .replace(".json", "")
-              .replace(/-/g, ":")
-              .replace(/T/, " "),
-            lastMessage: displayMessage,
-            messageCount: content.filter(
-              (msg: any) => msg.role === "user" || msg.role === "assistant"
-            ).length,
-            fileName: file,
-            lastModified: stats.mtime,
-          };
-        } catch (error) {
-          return null;
-        }
-      })
-      .filter(Boolean) as ConversationMetadata[];
-  };
-
-  // Function to load a conversation
-  const loadConversation = (fileName: string): CoreMessage[] => {
-    try {
-      const content = JSON.parse(
-        fs.readFileSync(path.join(logDir, fileName), "utf8")
-      );
-      return content as CoreMessage[];
-    } catch (error) {
-      console.error("Error loading conversation:", error);
-      return [];
-    }
-  };
-
-  // Function to prompt for conversation selection
-  const selectConversation = async (): Promise<string | null> => {
-    const conversations = listConversations();
-
-    if (conversations.length === 0) {
-      console.log(
-        "🌟 This looks like our first time chatting! I'm excited to meet you!\n"
-      );
-      return null;
-    }
-
-    console.log(
-      "� Here are our previous conversations - which one would you like to continue?"
-    );
-    console.log("─".repeat(80));
-    console.log(
-      "ID | Last Chat           | Topic / Last Message               | Messages"
-    );
-    console.log("─".repeat(80));
-
-    conversations.forEach((conv) => {
-      const lastModifiedStr = conv.lastModified
-        ? conv.lastModified
-            .toLocaleString("en-US", {
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: false,
-            })
-            .replace(",", "")
-        : conv.timestamp;
-
-      console.log(
-        `${conv.id.padStart(2)} | ${lastModifiedStr.padEnd(
-          19
-        )} | ${conv.lastMessage.padEnd(35)} | ${conv.messageCount}`
-      );
-    });
-
-    console.log("─".repeat(80));
-    console.log(
-      "✨ Choose a conversation number (1-10) to continue, or press Enter to start fresh:"
-    );
-
-    return new Promise((resolve) => {
-      rl.question("Your choice: ", (answer) => {
-        const choice = answer.trim();
-        if (!choice) {
-          resolve(null);
-        } else {
-          const selectedConv = conversations.find((c) => c.id === choice);
-          if (selectedConv) {
-            resolve((selectedConv as any).fileName);
-          } else {
-            console.log(
-              "🤔 Hmm, that doesn't look right. Let's start fresh instead!\n"
-            );
-            resolve(null);
-          }
-        }
-      });
-    });
-  };
-
   // Get tools from service
   const tools = toolsService.getAllTools(rl);
-
-  const askQuestion = (): Promise<string> => {
-    return new Promise((resolve) => {
-      rl.question("You: ", (answer) => {
-        resolve(answer);
-      });
-    });
-  };
-
-  const askContinueQuestion = (): Promise<string> => {
-    return new Promise((resolve) => {
-      // Temporarily disable the prompt and handle input directly
-      const originalPrompt = rl.getPrompt();
-      rl.setPrompt("");
-
-      const handleLine = (input: string) => {
-        rl.removeListener("line", handleLine);
-        rl.setPrompt(originalPrompt);
-        resolve(input.trim());
-      };
-
-      rl.on("line", handleLine);
-    });
-  };
 
   // Initialize conversation
   console.log(
@@ -328,11 +64,12 @@ const main = async () => {
   );
 
   // Check if user wants to resume a conversation
-  const selectedConversation = await selectConversation();
+  const conversations = listConversations(logDir);
+  const selectedConversation = await selectConversation(rl, conversations);
 
   if (selectedConversation) {
     // Load existing conversation
-    clientMessages = loadConversation(selectedConversation);
+    clientMessages = loadConversation(logDir, selectedConversation);
 
     // Extract conversation ID properly (handle files with titles)
     let extractedId = selectedConversation
@@ -410,40 +147,8 @@ const main = async () => {
       console.log(`💭 We were talking about: "${currentChatTitle}"`);
     }
 
-    // Show last few messages for context
-    const lastMessages = clientMessages
-      .slice(-4)
-      .filter((msg) => msg.role === "user" || msg.role === "assistant");
-
-    if (lastMessages.length > 0) {
-      console.log("\n� Let me remind you where we left off:");
-      console.log("─".repeat(50));
-      lastMessages.forEach((msg) => {
-        if (msg.role === "user") {
-          console.log(`You: ${msg.content}`);
-        } else if (msg.role === "assistant") {
-          // Handle different content formats
-          let content = "";
-          if (Array.isArray(msg.content)) {
-            content = msg.content
-              .map((part: any) =>
-                part.type === "text" ? part.text : `[${part.type}]`
-              )
-              .join("");
-          } else {
-            content = msg.content as string;
-          }
-          console.log(
-            `${AGENT_NAME}: ${content.substring(0, 100)}${
-              content.length > 100 ? "..." : ""
-            }`
-          );
-        }
-      });
-      console.log("─".repeat(50));
-    }
-
-    console.log("\nType 'exit' to quit\n");
+    // Display conversation context
+    displayConversationContext(clientMessages, AGENT_NAME, currentChatTitle);
   } else {
     // Start new conversation
     conversationId = timestamp;
@@ -568,7 +273,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
         userInput = "continue";
         skipNextQuestion = false;
       } else {
-        userInput = await askQuestion();
+        userInput = await askQuestion(rl);
       }
 
       const startTime = Date.now();
@@ -769,7 +474,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
         );
 
         try {
-          const continueAnswer = await askContinueQuestion();
+          const continueAnswer = await askContinueQuestion(rl);
 
           // Clear the line and move cursor back to overwrite the prompt
           process.stdout.write("\r\x1b[K"); // \r moves to start of line, \x1b[K clears to end of line
