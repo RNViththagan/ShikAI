@@ -7,10 +7,15 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  getAgentName,
+  getMaxSteps,
+  getTitleUpdateInterval,
+} from "../config/app-config";
 
-// Global configuration
-const MAX_STEPS = 5;
-const AGENT_NAME = process.env.AGENT_NAME || "ShikAI";
+// Get configuration values
+const MAX_STEPS = getMaxSteps();
+const AGENT_NAME = getAgentName();
 
 // Interface for conversation metadata
 interface ConversationMetadata {
@@ -225,6 +230,7 @@ const main = async () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const execAsync = promisify(exec);
   const logDir = "conversation-logs";
+  const titleInterval = getTitleUpdateInterval();
 
   // Ensure logs directory exists
   if (!fs.existsSync(logDir)) {
@@ -813,10 +819,10 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
         }
       }
 
-      // Update title every 5 total messages (user + assistant messages)
+      // Update title every N total messages (user + assistant messages)
       if (
         messageCount > 0 &&
-        messageCount % 5 === 0 &&
+        messageCount % titleInterval === 0 &&
         !isFirstUserInput &&
         currentChatTitle
       ) {
@@ -896,7 +902,7 @@ I'm here to make your computing experience smoother and more enjoyable. Whether 
       // Check if we should update title after assistant response
       if (
         messageCount > 0 &&
-        messageCount % 5 === 0 &&
+        messageCount % titleInterval === 0 &&
         !isFirstUserInput &&
         currentChatTitle
       ) {

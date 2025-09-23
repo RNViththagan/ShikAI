@@ -2,14 +2,14 @@
   "name": "shikai",
   "version": "1.0.0",
   "description": "ShikAI - Intelligent Terminal Assistant with Conversation Management",
-  "main": "dist/core/shikai.js",
+  "main": "dist/core/app.js",
   "bin": {
     "shikai": "./bin/shikai"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/core/shikai.ts",
-    "start": "node dist/core/shikai.js",
+    "dev": "tsx src/core/app.ts",
+    "start": "node dist/core/app.js",
     "cli": "tsx src/cli/index.ts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build"
