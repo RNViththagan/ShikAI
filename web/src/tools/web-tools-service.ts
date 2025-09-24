@@ -29,7 +29,11 @@ export class WebToolsService {
     console.log("🛠️ [WebToolsService] getToolsArray() called");
     const tools = this.getAllTools();
     const toolsArray = Object.values(tools);
-    console.log("📊 [WebToolsService] Returning", toolsArray.length, "tools as array");
+    console.log(
+      "📊 [WebToolsService] Returning",
+      toolsArray.length,
+      "tools as array"
+    );
     return toolsArray;
   }
 
@@ -41,11 +45,14 @@ export class WebToolsService {
     const allTools = this.getAllTools();
     const availableKeys = keys.filter((key) => key in allTools);
     const unavailableKeys = keys.filter((key) => !(key in allTools));
-    
+
     if (unavailableKeys.length > 0) {
-      console.warn("⚠️ [WebToolsService] Unavailable tools requested:", unavailableKeys);
+      console.warn(
+        "⚠️ [WebToolsService] Unavailable tools requested:",
+        unavailableKeys
+      );
     }
-    
+
     console.log("✅ [WebToolsService] Returning tools:", availableKeys);
     return availableKeys.map((key) => (allTools as any)[key]);
   }

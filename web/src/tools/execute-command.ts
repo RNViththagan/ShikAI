@@ -9,7 +9,7 @@ import { z } from "zod";
 export const executeCommandTool = tool({
   description:
     "Explain what terminal commands would be executed to accomplish a task. For security, commands are not actually executed in the web environment.",
-  parameters: z.object({
+  inputSchema: z.object({
     command: z.string().describe("The terminal command that would be executed"),
     purpose: z.string().describe("What this command accomplishes"),
     workingDirectory: z

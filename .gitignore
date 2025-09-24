@@ -23,7 +23,6 @@ out/
 
 # Conversation logs
 conversation-logs/
-*.json
 
 # AI and ML files
 *.pkl

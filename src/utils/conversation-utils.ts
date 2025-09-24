@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { CoreMessage } from "ai";
+import { ModelMessage } from "ai";
 import { extractTitleFromFileName, updateConversationFile } from "./file-utils";
 
 /**
@@ -102,12 +102,12 @@ export function listConversations(logDir: string): ConversationMetadata[] {
 export function loadConversation(
   logDir: string,
   fileName: string
-): CoreMessage[] {
+): ModelMessage[] {
   try {
     const content = JSON.parse(
       fs.readFileSync(path.join(logDir, fileName), "utf8")
     );
-    return content as CoreMessage[];
+    return content as ModelMessage[];
   } catch (error) {
     console.error("Error loading conversation:", error);
     return [];
@@ -119,7 +119,7 @@ export function loadConversation(
  */
 export function saveConversation(
   filePath: string,
-  messages: CoreMessage[]
+  messages: ModelMessage[]
 ): void {
   try {
     fs.writeFileSync(filePath, JSON.stringify(messages, null, 2));
@@ -133,7 +133,7 @@ export function saveConversation(
  */
 export async function generateInitialTitle(
   aiService: any,
-  clientMessages: CoreMessage[],
+  clientMessages: ModelMessage[],
   userInput: string,
   logDir: string,
   currentFilePath: string,
@@ -179,7 +179,7 @@ export async function generateInitialTitle(
  */
 export async function updateConversationTitle(
   aiService: any,
-  clientMessages: CoreMessage[],
+  clientMessages: ModelMessage[],
   currentTitle: string,
   logDir: string,
   currentFilePath: string,
@@ -243,7 +243,6 @@ export function shouldUpdateTitle(
 export function appendFinalMessages(
   history: any[],
   finalMessages: any[],
-  knownIds: Set<string>,
   cache: boolean = true
 ): void {
   // First, remove cache control from previous assistant messages (except system message)
@@ -269,19 +268,14 @@ export function appendFinalMessages(
   for (let i = 0; i < finalMessages.length; i++) {
     const m = finalMessages[i];
 
-    if ((m.role === "assistant" || m.role === "tool") && m.id) {
-      if (!knownIds.has(m.id)) {
-        knownIds.add(m.id);
-
-        // Only add cache control to the final assistant message
-        if (cache && i === finalMessages.length - 1 && m.role === "assistant") {
-          m.providerOptions = {
-            anthropic: { cacheControl: { type: "ephemeral" } },
-          };
-        }
-
-        history.push(m);
+    if (m.role === "assistant" || m.role === "tool") {
+      // Only add cache control to the final assistant message
+      if (cache && i === finalMessages.length - 1 && m.role === "assistant") {
+        m.providerOptions = {
+          anthropic: { cacheControl: { type: "ephemeral" } },
+        };
       }
+      history.push(m);
     }
   }
 }

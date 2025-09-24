@@ -8,7 +8,7 @@ import { z } from "zod";
 export const interactiveAskPermissionTool = tool({
   description:
     "Request explicit permission from the user before executing potentially risky actions. This will pause the conversation and show a permission dialog.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z
       .string()
       .describe("Description of the action you want to perform"),
@@ -31,7 +31,7 @@ export const interactiveAskPermissionTool = tool({
       risks,
       reason,
       severity,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     // Throw a special permission error that the API can catch

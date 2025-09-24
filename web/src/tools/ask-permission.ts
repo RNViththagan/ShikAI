@@ -9,7 +9,7 @@ import { z } from "zod";
 export const askPermissionTool = tool({
   description:
     "Explain what permission would be needed for potentially risky actions. This provides transparency about what the AI would do and why, but doesn't block execution in web environment.",
-  parameters: z.object({
+  inputSchema: z.object({
     action: z
       .string()
       .describe("Description of the action you want to perform"),
@@ -32,7 +32,7 @@ export const askPermissionTool = tool({
       risks,
       reason,
       severity,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     // In web environment, we explain the permission that would be needed

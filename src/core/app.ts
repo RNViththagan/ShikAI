@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { CoreMessage } from "ai";
+import { ModelMessage } from "ai";
 import * as readline from "readline";
 import * as fs from "fs";
 import * as path from "path";
@@ -56,7 +56,7 @@ const main = async () => {
     output: process.stdout,
   });
 
-  let clientMessages: Array<CoreMessage> = [];
+  let clientMessages: Array<ModelMessage> = [];
   let conversationId: string = "";
   let isResumedConversation = false;
   let currentChatTitle = "";
@@ -175,8 +175,6 @@ const main = async () => {
     );
   }
 
-  const knownIds = new Set<string>();
-
   let userInput: string;
   let skipNextQuestion = false;
 
@@ -268,7 +266,7 @@ const main = async () => {
       } = await aiService.streamText(clientMessages, tools, MAX_STEPS);
 
       for await (const part of fullStream) {
-        process.stdout.write(part.type === "text-delta" ? part.textDelta : "");
+        process.stdout.write(part.type === "text-delta" ? part.text : "");
       }
 
       const { messages: finalMessages } = await response;
@@ -276,7 +274,7 @@ const main = async () => {
       const tokenDetails = await providerMetadata;
 
       const cache = true;
-      appendFinalMessages(clientMessages, finalMessages, knownIds, cache);
+      appendFinalMessages(clientMessages, finalMessages, cache);
 
       // Count assistant messages added (typically 1, but could be more with tool calls)
       const assistantMessagesAdded = finalMessages.filter(

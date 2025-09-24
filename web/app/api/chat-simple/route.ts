@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { CoreMessage } from "ai";
+import { ModelMessage } from "ai";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,10 +20,10 @@ export async function POST(request: NextRequest) {
     const PROMPT_TEMPLATE = process.env.PROMPT_TEMPLATE || "default";
 
     // Prepare messages with system prompt
-    let conversationMessages: CoreMessage[] = [...messages];
+    let conversationMessages: ModelMessage[] = [...messages];
 
-    if (!messages.some((msg: CoreMessage) => msg.role === "system")) {
-      const systemMessage: CoreMessage = {
+    if (!messages.some((msg: ModelMessage) => msg.role === "system")) {
+      const systemMessage: ModelMessage = {
         role: "system",
         content: getPromptTemplate(PROMPT_TEMPLATE, AGENT_NAME),
       };

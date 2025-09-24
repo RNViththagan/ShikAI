@@ -18,7 +18,7 @@ export class ToolsService {
     return tool({
       description:
         "Ask the user for explicit permission before executing major/potentially risky commands. Use this for any operation that could delete files, install software, change system settings, etc.",
-      parameters: z.object({
+      inputSchema: z.object({
         action: z
           .string()
           .describe("Description of the action you want to perform"),
@@ -74,7 +74,7 @@ export class ToolsService {
     return tool({
       description:
         "Execute terminal commands as if opening a terminal and running them directly. Use this for any command-line operations.",
-      parameters: z.object({
+      inputSchema: z.object({
         command: z.string().describe("The terminal command to execute"),
       }),
       execute: async ({ command }) => {

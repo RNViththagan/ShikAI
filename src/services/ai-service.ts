@@ -1,5 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateText, streamText } from "ai";
+import { generateText, stepCountIs, streamText } from "ai";
 import { getConfig } from "../config/app-config";
 
 /**
@@ -16,7 +16,7 @@ export class AIService {
       const { text } = await generateText({
         model: anthropic(this.config.agent.defaultModel),
         prompt,
-        maxTokens,
+        maxOutputTokens: maxTokens,
       });
       return text;
     } catch (error) {
@@ -33,7 +33,7 @@ export class AIService {
       model: anthropic(this.config.agent.defaultModel),
       messages,
       tools,
-      maxSteps,
+      stopWhen: stepCountIs(maxSteps),
     });
   }
 
