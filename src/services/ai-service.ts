@@ -1,5 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateText, stepCountIs, streamText } from "ai";
+import { generateText, stepCountIs, streamText, ModelMessage } from "ai";
 import { getConfig } from "../config/app-config";
 
 /**
@@ -28,7 +28,7 @@ export class AIService {
   /**
    * Stream text using the AI model with tools
    */
-  async streamText(messages: any[], tools: any, maxSteps: number) {
+  async streamText(messages: ModelMessage[], tools: any, maxSteps: number) {
     return await streamText({
       model: anthropic(this.config.agent.defaultModel),
       messages,
