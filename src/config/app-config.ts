@@ -49,6 +49,9 @@ export function getConfig(): AppConfig {
     agent: {
       ...DEFAULT_CONFIG.agent,
       name: process.env.AGENT_NAME || DEFAULT_CONFIG.agent.name,
+      maxSteps: process.env.MAX_STEPS
+        ? parseInt(process.env.MAX_STEPS, 10) || DEFAULT_CONFIG.agent.maxSteps
+        : DEFAULT_CONFIG.agent.maxSteps,
     },
   };
 }

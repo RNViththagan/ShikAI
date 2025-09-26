@@ -1,12 +1,17 @@
 import { askPermissionTool } from "./ask-permission";
-import { executeCommandTool } from "./execute-command";
+import { ToolsService } from "@shared/services/tools-service";
 
 /**
  * Web Tools Service - Manages web-safe AI tools
- * These tools are designed for web environments and don't perform
- * potentially dangerous operations like the CLI versions
+ * Uses the main project's ToolsService for execute command functionality
  */
 export class WebToolsService {
+  private mainToolsService: ToolsService;
+
+  constructor() {
+    this.mainToolsService = new ToolsService();
+  }
+
   /**
    * Get all web-safe tools for the AI
    */
@@ -14,7 +19,7 @@ export class WebToolsService {
     console.log("🛠️ [WebToolsService] getAllTools() called");
     const tools = {
       askPermission: askPermissionTool,
-      executeCommand: executeCommandTool,
+      executeCommand: this.mainToolsService.createExecuteCommandTool(),
     };
     console.log("📦 [WebToolsService] Available tools:", Object.keys(tools));
     return tools;

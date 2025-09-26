@@ -4,14 +4,14 @@ import { useState, useEffect, useRef } from "react";
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
 }
 
 export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -25,34 +25,65 @@ export default function ChatPage() {
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      role: 'user',
-      content: input
+      role: "user",
+      content: input,
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
     setIsLoading(true);
     setError(null);
 
+    // Create an initial empty assistant message
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+    };
+
+    setMessages((prev) => [...prev, assistantMessage]);
+
     try {
-      const response = await fetch('/api/chat-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messages, userMessage] })
+      const response = await fetch("/api/chat-stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, userMessage] }),
       });
 
-      if (!response.ok) throw new Error('Failed to get response');
+      if (!response.ok) throw new Error("Failed to get response");
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: await response.text()
-      };
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-      setMessages(prev => [...prev, assistantMessage]);
+      if (!reader) throw new Error("No response body reader");
+
+      let accumulatedContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        accumulatedContent += chunk;
+
+        // Update the assistant message with accumulated content
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: accumulatedContent }
+              : msg
+          )
+        );
+      }
     } catch (err) {
       setError(err as Error);
       console.error("❌ Chat error:", err);
+      // Remove the empty assistant message if there was an error
+      setMessages((prev) =>
+        prev.filter((msg) => msg.id !== assistantMessageId)
+      );
     } finally {
       setIsLoading(false);
     }

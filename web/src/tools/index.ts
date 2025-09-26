@@ -4,5 +4,5 @@
  */
 
 export { askPermissionTool } from "./ask-permission";
-export { executeCommandTool } from "./execute-command";
+// Using main project's execute command tool instead of web version
 export { WebToolsService } from "./web-tools-service";
