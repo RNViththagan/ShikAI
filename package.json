@@ -42,9 +42,8 @@
     "@ai-sdk/google": "^2.0.16",
     "@ai-sdk/openai": "^2.0.35",
     "@ai-sdk/perplexity": "^2.0.10",
-    "@ai-sdk/react": "^2.0.52",
     "@anthropic-ai/sdk": "^0.63.1",
-    "ai": "^5.0.52",
+    "ai": "^5.0.53",
     "commander": "^14.0.1",
     "exa-js": "^1.9.3",
     "glob": "^11.0.3",
@@ -53,8 +52,7 @@
   "devDependencies": {
     "@types/node": "^24.5.2",
     "dotenv": "^17.2.2",
-    "esbuild": "^0.25.10",
-    "tsx": "^4.20.5",
+    "tsx": "^4.19.3",
     "typescript": "^5.9.2"
   },
   "engines": {

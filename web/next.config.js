@@ -4,9 +4,6 @@ const path = require("path");
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  experimental: {
-    appDir: true,
-  },
   webpack: (config, { isServer }) => {
     // Add alias for shared modules
     config.resolve.alias = {

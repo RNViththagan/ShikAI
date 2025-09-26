@@ -1,6 +1,5 @@
 import { askPermissionTool } from "./ask-permission";
 import { executeCommandTool } from "./execute-command";
-import { interactiveAskPermissionTool } from "./interactive-ask-permission";
 
 /**
  * Web Tools Service - Manages web-safe AI tools
@@ -16,7 +15,6 @@ export class WebToolsService {
     const tools = {
       askPermission: askPermissionTool,
       executeCommand: executeCommandTool,
-      interactiveAskPermission: interactiveAskPermissionTool,
     };
     console.log("📦 [WebToolsService] Available tools:", Object.keys(tools));
     return tools;
