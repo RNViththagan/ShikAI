@@ -327,12 +327,6 @@ const main = async () => {
           break; // Exit the while loop when user chooses to stop
         }
       }
-
-      console.log("\n📊 Response Details:");
-      console.log("- Cache token details:", tokenDetails);
-      console.log("- Token usage:", await usage);
-      console.log("- Response time:", Date.now() - startTime, "ms");
-      console.log("\n");
     }
   } catch (error) {
     console.error("Error with Claude:", error);
