@@ -1,9 +1,23 @@
 import { z } from "zod";
 import { AIService } from "../services/ai-service";
 import { RpcMethodDefinition, RpcContext } from "./types";
-import { tool } from "ai";
+import { ModelMessage, tool } from "ai";
 import { ToolsService } from "../services";
 import * as readline from "readline";
+import {
+  getPromptTemplate as getPromptTemplateContent,
+  getSystemPrompt,
+} from "../config/prompts";
+import {
+  getMaxSteps,
+  getAgentName,
+  getPromptTemplate,
+} from "../config/app-config";
+
+const MAX_STEPS = getMaxSteps();
+const AGENT_NAME = getAgentName();
+const PROMPT_TEMPLATE_NAME = getPromptTemplate();
+
 // Simple parameter schema for text generation
 const TextGenerationSchema = z.object({
   prompt: z.string(),
@@ -108,14 +122,27 @@ export class AIRpcMethods {
       });
       const tools = toolsService.getAllTools(rl);
 
+      const clientMessages: ModelMessage[] = [
+        {
+          role: "system",
+          content: getPromptTemplateContent(PROMPT_TEMPLATE_NAME, AGENT_NAME),
+          providerOptions: {
+            anthropic: { cacheControl: { type: "ephemeral" } },
+          },
+        },
+        ...params.messages,
+      ];
+
       // Call the AI service to stream text and return the stream result directly
       const response = await this.aiService.streamText(
-        params.messages as any[], // Cast to ModelMessage[] - the AI service will handle it
+        clientMessages,
         tools,
-        params.maxSteps
+        MAX_STEPS
       );
 
-      console.log("✅ AI Stream Text initiated, creating UI message stream response");
+      console.log(
+        "✅ AI Stream Text initiated, creating UI message stream response"
+      );
 
       // Convert to UI message stream response
       const uiStreamResponse = response.toUIMessageStreamResponse();

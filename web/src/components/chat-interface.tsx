@@ -113,9 +113,28 @@ export default function ChatInterface() {
     setIsLoading(true);
 
     try {
+      // Build conversation history for the RPC call
+      const conversationHistory = messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          role: m.role,
+          content:
+            m.content ||
+            m.contentParts
+              ?.map((p) => (p.type === "text" ? p.content : ""))
+              .join("") ||
+            "",
+        }));
+
+      // Add the current user message
+      conversationHistory.push({
+        role: "user",
+        content: userMessage,
+      });
+
       // 🎯 This is the key part: RPC call to generate text
       const response = await rpcClient.call("ai.generateText", {
-        prompt: userMessage,
+        prompt: userMessage, // For simple generation, just use the user message
         maxTokens: 100,
       });
 
@@ -170,13 +189,38 @@ export default function ChatInterface() {
       setMessages((prev) => [...prev, assistantMessage]);
       setCurrentToolCalls(new Map()); // Reset tool calls for new message
 
+      console.log("[Context]All messages", messages);
+
+      // Build proper conversation history including the current user message
+      const conversationHistory = messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          role: m.role,
+          content:
+            m.content ||
+            m.contentParts
+              ?.map((p) => (p.type === "text" ? p.content : ""))
+              .join("") ||
+            "",
+        }));
+
+      // Add the current user message to the conversation
+      conversationHistory.push({
+        role: "user",
+        content: userMessage,
+      });
+
+      console.log(
+        "[Context]Conversation history:",
+        JSON.stringify(conversationHistory, null, 2)
+      );
       // Make streaming RPC call
       const rpcRequest = {
         jsonrpc: "2.0",
         method: "ai.streamText",
         params: {
-          messages: [{ role: "user", content: userMessage }],
-          maxSteps: 5,
+          messages: conversationHistory,
+          maxSteps: 20000,
         },
         id: Date.now(),
       };

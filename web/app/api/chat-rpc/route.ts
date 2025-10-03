@@ -93,13 +93,21 @@ async function handleStreamingRPC(
         console.log("✅ RPC method returned:", result.type);
 
         if (result.type === "ui_stream_response" && result.uiStreamResponse) {
-          console.log("🌊 Processing UI message stream response from RPC method");
-          console.log("📦 UI Stream Response received:", result.uiStreamResponse);
+          console.log(
+            "🌊 Processing UI message stream response from RPC method"
+          );
+          console.log(
+            "📦 UI Stream Response received:",
+            result.uiStreamResponse
+          );
 
           // The uiStreamResponse is a Response object with a readable stream
           const uiResponse = result.uiStreamResponse;
           console.log("🔍 UI Response body:", uiResponse.body);
-          console.log("🔍 UI Response headers:", Array.from(uiResponse.headers.entries()));
+          console.log(
+            "🔍 UI Response headers:",
+            Array.from(uiResponse.headers.entries())
+          );
 
           if (uiResponse.body) {
             const reader = uiResponse.body.getReader();
@@ -111,7 +119,7 @@ async function handleStreamingRPC(
                 if (done) break;
 
                 const chunk = decoder.decode(value, { stream: true });
-                console.log("🌊 UI Stream chunk received:", chunk);
+                //console.log("🌊 UI Stream chunk received:", chunk);
 
                 // Send the UI stream chunk as SSE with RPC structure
                 const chunkData = {
